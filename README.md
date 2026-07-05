@@ -49,12 +49,15 @@ Open `https://<your-mac-ip>:5173` in the Quest browser, accept the
 certificate warning, load a term, then hit **ENTER VR** (bottom-right).
 The term floats at tabletop scale in front of you.
 
-| control                | action                                  |
-| ---------------------- | --------------------------------------- |
-| point + trigger        | fire the redex you're pointing at       |
-| right A / B            | step / back                             |
-| left X / Y             | reset / run to normal form              |
-| right stick ←→ / ↑↓    | rotate / scale the term                 |
+| control                | action                                        |
+| ---------------------- | --------------------------------------------- |
+| point + trigger        | fire the redex you're pointing at             |
+| right A / B            | step / back                                   |
+| left X                 | show/hide the control panel (presets,         |
+|                        | strategy, reset, transport) on your left hand |
+| left Y                 | run to normal form                            |
+| left stick             | move around the space                         |
+| right stick ←→ / ↑↓    | rotate / scale the term                       |
 
 Bloom is disabled inside VR (post-processing doesn't support per-eye
 rendering); everything else — choreography, presets, strategies — works

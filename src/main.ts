@@ -109,6 +109,7 @@ class App {
 
     const oldView = this.sceneMgr.currentView!
     this.animating = true
+    this.sceneMgr.sparklesSuppressed = true
     this.pending = this.pending.then(async () => {
       const newView = await animateBeta({
         animator: this.animator,
@@ -125,6 +126,7 @@ class App {
       this.sceneMgr.setView(newView)
       this.animator.endSkip()
       this.animating = false
+      this.sceneMgr.sparklesSuppressed = this.running
       this.updateHud()
     })
   }
@@ -148,6 +150,7 @@ class App {
     }
     await this.interrupt()
     this.running = true
+    this.sceneMgr.sparklesSuppressed = true
     this.runBtn.classList.add('running')
     this.runBtn.textContent = '⏸ stop'
     this.setMessage(null)
@@ -177,6 +180,7 @@ class App {
 
   private stopRun(): void {
     this.running = false
+    this.sceneMgr.sparklesSuppressed = this.animating
     this.runBtn.classList.remove('running')
     this.runBtn.textContent = '⏵ run'
   }
@@ -389,6 +393,19 @@ class App {
       else if (action === 'back') void this.back()
       else if (action === 'reset') void this.reset()
       else if (action === 'run') void this.runToNormalForm()
+      else if (action === 'strategy') {
+        this.strategySelect.value = this.strategy === 'normal' ? 'applicative' : 'normal'
+        this.sceneMgr.setVRButtonLabel('strategy', `strategy: ${this.strategySelect.value}`)
+      } else if (action.startsWith('preset:')) {
+        const i = parseInt(action.slice('preset:'.length), 10)
+        const preset = PRESETS[i]
+        if (preset) {
+          void this.interrupt().then(() => {
+            $<HTMLTextAreaElement>('term-input').value = preset.src
+            if (this.loadSource(preset.src)) this.markActivePreset(i)
+          })
+        }
+      }
     }
   }
 }

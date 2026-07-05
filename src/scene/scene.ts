@@ -8,6 +8,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { Path } from '../lambda/term'
 import { TermView, pathOfMesh } from './view'
 import { Animator, easeInOut } from './tween'
+import { VRPanel } from './vrpanel'
 
 export class SceneManager {
   readonly scene = new THREE.Scene()
@@ -20,7 +21,9 @@ export class SceneManager {
   autoFrame = true
   onRedexClick: ((path: Path) => void) | null = null
   onHoverNode: ((key: string | null) => void) | null = null
-  onXRAction: ((action: 'step' | 'back' | 'reset' | 'run') => void) | null = null
+  onXRAction: ((action: string) => void) | null = null
+  /** Set while a reduction is animating/running — pauses idle sparkles. */
+  sparklesSuppressed = false
 
   /** User-transformable container (VR: scaled to tabletop, rotatable). */
   private worldGroup = new THREE.Group()
@@ -30,6 +33,10 @@ export class SceneManager {
   private controllers: THREE.Object3D[] = []
   private prevButtons = new Map<string, boolean[]>()
   private recenterTarget = new THREE.Vector3()
+  /** Player rig: camera + controllers; moved by left-stick locomotion. */
+  private dolly = new THREE.Group()
+  private vrPanel = new VRPanel()
+  private panelHoverId: string | null = null
 
   private sparkles: Sparkle[] = []
   private nextGlintAt = 2.5
@@ -56,6 +63,8 @@ export class SceneManager {
 
     this.worldGroup.add(this.contentGroup)
     this.scene.add(this.worldGroup)
+    this.dolly.add(this.camera)
+    this.scene.add(this.dolly)
 
     // ---- WebXR --------------------------------------------------------
     this.renderer.xr.enabled = true
@@ -88,7 +97,19 @@ export class SceneManager {
       ray.scale.z = 4
       controller.add(ray)
       controller.addEventListener('selectstart', () => this.xrSelect())
-      this.scene.add(controller)
+      // the control palette rides on the left controller
+      controller.addEventListener('connected', (e) => {
+        const source = (e as unknown as { data?: XRInputSource }).data
+        if (source?.handedness === 'left') {
+          this.vrPanel.group.position.set(0, 0.09, -0.14)
+          this.vrPanel.group.rotation.set(-0.65, 0, 0)
+          controller.add(this.vrPanel.group)
+        }
+      })
+      controller.addEventListener('disconnected', () => {
+        if (this.vrPanel.group.parent === controller) controller.remove(this.vrPanel.group)
+      })
+      this.dolly.add(controller)
       this.controllers.push(controller)
     }
 
@@ -147,6 +168,7 @@ export class SceneManager {
     if (view && !view.group.parent) this.contentGroup.add(view.group)
     this.hoveredRedexKey = null
     this.hoveredAnyKey = null
+    this.clearSparkles()
   }
 
   add(obj: THREE.Object3D): void {
@@ -230,7 +252,13 @@ export class SceneManager {
    *  flare) and rehearse their firing: a mote travels the λ→@ edge, the
    *  same edge that runs hot in beat A of the choreography. */
   private updateSparkles(dt: number, view: TermView, t: number): void {
-    if (!this.animator.busy && view.redexKeys.size > 0) {
+    // no ambience while a reduction is animating or running — cull anything
+    // already in flight too so glints never linger into a choreography
+    if (this.sparklesSuppressed || this.animator.busy) {
+      if (this.sparkles.length > 0) this.clearSparkles()
+      return
+    }
+    if (view.redexKeys.size > 0) {
       if (t >= this.nextGlintAt) {
         this.spawnGlint(view)
         this.nextGlintAt = t + 1.8 + Math.random() * 1.6
@@ -264,6 +292,14 @@ export class SceneManager {
       }
       return true
     })
+  }
+
+  private clearSparkles(): void {
+    for (const s of this.sparkles) {
+      s.sprite.removeFromParent()
+      s.mat.dispose()
+    }
+    this.sparkles = []
   }
 
   private randomRedexKey(view: TermView): string {
@@ -324,6 +360,8 @@ export class SceneManager {
     this.worldGroup.scale.setScalar(Math.min(0.1, 0.55 / radius))
     this.worldGroup.position.set(0, 1.35, -1.1)
     this.worldGroup.rotation.set(0, 0, 0)
+    this.dolly.position.set(0, 0, 0)
+    if (this.vrPanel.group.visible) this.vrPanel.toggle()
     this.grid.visible = true
   }
 
@@ -332,22 +370,33 @@ export class SceneManager {
     this.worldGroup.position.set(0, 0, 0)
     this.worldGroup.rotation.set(0, 0, 0)
     this.contentGroup.position.set(0, 0, 0)
+    this.dolly.position.set(0, 0, 0)
     this.grid.visible = false
+  }
+
+  setVRButtonLabel(id: string, label: string): void {
+    this.vrPanel.setLabel(id, label)
   }
 
   private xrPick(view: TermView): void {
     const m = new THREE.Matrix4()
     let found: string | null = null
+    let panelId: string | null = null
     for (const controller of this.controllers) {
       m.identity().extractRotation(controller.matrixWorld)
       this.raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld)
       this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(m)
+      // the panel takes priority over redexes behind it
+      panelId = this.vrPanel.hitTest(this.raycaster)
+      if (panelId !== null) break
       const hits = this.raycaster.intersectObjects(view.redexMeshes(), false)
       if (hits.length > 0) {
         found = hits[0].object.userData.key as string
         break
       }
     }
+    this.panelHoverId = panelId
+    if (panelId !== null) found = null
     if (found !== this.hoveredRedexKey) {
       if (this.hoveredRedexKey !== null) view.setRedexHighlight(this.hoveredRedexKey, false)
       if (found !== null) view.setRedexHighlight(found, true)
@@ -356,14 +405,20 @@ export class SceneManager {
   }
 
   private xrSelect(): void {
+    if (this.panelHoverId !== null) {
+      this.vrPanel.flash(this.panelHoverId)
+      this.onXRAction?.(this.panelHoverId)
+      return
+    }
     if (this.hoveredRedexKey !== null && this.currentView && this.onRedexClick) {
       const nv = this.currentView.nodes.get(this.hoveredRedexKey)
       if (nv) this.onRedexClick(pathOfMesh(nv.mesh))
     }
   }
 
-  /** Quest controllers (xr-standard mapping): right A/B = step/back,
-   *  left X/Y = reset/run, right thumbstick rotates and scales the term. */
+  /** Quest controllers (xr-standard mapping): right A/B = step/back and the
+   *  right stick rotates/scales the term; the left stick moves you through
+   *  the space, left X toggles the control panel, left Y runs. */
   private pollGamepads(dt: number): void {
     const session = this.renderer.xr.getSession()
     if (!session) return
@@ -373,19 +428,31 @@ export class SceneManager {
       const prev = this.prevButtons.get(src.handedness) ?? []
       const pressed = gp.buttons.map((b) => b.pressed)
       const edge = (i: number): boolean => pressed[i] === true && prev[i] !== true
+      const ax = gp.axes[2] ?? 0
+      const ay = gp.axes[3] ?? 0
       if (src.handedness === 'right') {
         if (edge(4)) this.onXRAction?.('step')
         if (edge(5)) this.onXRAction?.('back')
-        const ax = gp.axes[2] ?? 0
-        const ay = gp.axes[3] ?? 0
         if (Math.abs(ax) > 0.15) this.worldGroup.rotation.y -= ax * dt * 1.8
         if (Math.abs(ay) > 0.15) {
           const s = THREE.MathUtils.clamp(this.worldGroup.scale.x * (1 - ay * dt), 0.008, 0.6)
           this.worldGroup.scale.setScalar(s)
         }
       } else {
-        if (edge(4)) this.onXRAction?.('reset')
+        if (edge(4)) this.vrPanel.toggle()
         if (edge(5)) this.onXRAction?.('run')
+        // smooth locomotion, head-relative on the ground plane
+        if (Math.abs(ax) > 0.15 || Math.abs(ay) > 0.15) {
+          this.camera.getWorldDirection(tmpFwd)
+          tmpFwd.y = 0
+          if (tmpFwd.lengthSq() > 1e-6) {
+            tmpFwd.normalize()
+            tmpRight.crossVectors(tmpFwd, UP_Y)
+            const speed = 1.8
+            this.dolly.position.addScaledVector(tmpFwd, -ay * dt * speed)
+            this.dolly.position.addScaledVector(tmpRight, ax * dt * speed)
+          }
+        }
       }
       this.prevButtons.set(src.handedness, pressed)
     }
@@ -411,6 +478,10 @@ export class SceneManager {
     }
   }
 }
+
+const UP_Y = new THREE.Vector3(0, 1, 0)
+const tmpFwd = new THREE.Vector3()
+const tmpRight = new THREE.Vector3()
 
 interface Sparkle {
   sprite: THREE.Sprite
