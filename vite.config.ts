@@ -5,5 +5,8 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 // self-signed HTTPS so a headset on the same LAN can connect; plain
 // `npm run dev` stays http://localhost for desktop work.
 export default defineConfig({
+  // relative base so the same build works at / (local preview) and at
+  // /lambda-dangle/ (GitHub Pages project site)
+  base: './',
   plugins: process.env.VR ? [basicSsl()] : [],
 })
