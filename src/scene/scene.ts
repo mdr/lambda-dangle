@@ -7,7 +7,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { Path } from '../lambda/term'
 import { TermView, pathOfMesh } from './view'
-import { Animator } from './tween'
+import { Animator, easeInOut } from './tween'
 
 export class SceneManager {
   readonly scene = new THREE.Scene()
@@ -30,6 +30,10 @@ export class SceneManager {
   private controllers: THREE.Object3D[] = []
   private prevButtons = new Map<string, boolean[]>()
   private recenterTarget = new THREE.Vector3()
+
+  private sparkles: Sparkle[] = []
+  private nextGlintAt = 2.5
+  private nextMoteAt = 4.5
 
   private raycaster = new THREE.Raycaster()
   private pointer = new THREE.Vector2(-10, -10)
@@ -208,6 +212,7 @@ export class SceneManager {
         this.recenterTarget.copy(b.center).negate()
         this.contentGroup.position.lerp(this.recenterTarget, 0.03)
       }
+      this.updateSparkles(dt, view, t)
     }
 
     if (presenting) {
@@ -217,6 +222,99 @@ export class SceneManager {
     } else {
       this.composer.render()
     }
+  }
+
+  // ---- idle ambience: glints & edge motes on candidate redexes ------------
+
+  /** While nothing is animating, redexes occasionally glint (a brief star
+   *  flare) and rehearse their firing: a mote travels the λ→@ edge, the
+   *  same edge that runs hot in beat A of the choreography. */
+  private updateSparkles(dt: number, view: TermView, t: number): void {
+    if (!this.animator.busy && view.redexKeys.size > 0) {
+      if (t >= this.nextGlintAt) {
+        this.spawnGlint(view)
+        this.nextGlintAt = t + 1.8 + Math.random() * 1.6
+      }
+      if (t >= this.nextMoteAt) {
+        this.spawnMote(view)
+        this.nextMoteAt = t + 3.2 + Math.random() * 2.8
+      }
+    }
+    this.sparkles = this.sparkles.filter((s) => {
+      s.age += dt
+      const k = s.age / s.life
+      if (k >= 1) {
+        s.sprite.removeFromParent()
+        s.mat.dispose()
+        return false
+      }
+      const env = Math.sin(k * Math.PI)
+      if (s.kind === 'glint') {
+        s.sprite.scale.setScalar(s.baseScale * (0.35 + 0.65 * env))
+        s.mat.opacity = 0.85 * env
+        s.mat.rotation += dt * 1.1
+      } else {
+        const from = view.nodes.get(s.fromKey!)?.mesh.position
+        const to = view.nodes.get(s.toKey!)?.mesh.position
+        if (from && to) {
+          s.sprite.position.lerpVectors(from, to, easeInOut(k))
+          s.sprite.position.z += 0.18
+        }
+        s.mat.opacity = 0.9 * Math.min(1, env * 1.7)
+      }
+      return true
+    })
+  }
+
+  private randomRedexKey(view: TermView): string {
+    const keys = [...view.redexKeys]
+    return keys[Math.floor(Math.random() * keys.length)]
+  }
+
+  private spawnGlint(view: TermView): void {
+    const nv = view.nodes.get(this.randomRedexKey(view))
+    if (!nv) return
+    const mat = new THREE.SpriteMaterial({
+      map: glintTexture(),
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      rotation: Math.random() * Math.PI,
+    })
+    const sprite = new THREE.Sprite(mat)
+    sprite.position
+      .copy(nv.mesh.position)
+      .add(new THREE.Vector3((Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.6, 0.35))
+    view.group.add(sprite)
+    this.sparkles.push({ sprite, mat, kind: 'glint', age: 0, life: 0.5, baseScale: 0.85 })
+  }
+
+  private spawnMote(view: TermView): void {
+    const redexKey = this.randomRedexKey(view)
+    const lamKey = (redexKey === '' ? '' : redexKey + '/') + 'fn'
+    if (!view.nodes.has(lamKey)) return
+    const mat = new THREE.SpriteMaterial({
+      map: moteTexture(),
+      color: new THREE.Color('#b7c3ff'),
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    })
+    const sprite = new THREE.Sprite(mat)
+    sprite.scale.setScalar(0.3)
+    view.group.add(sprite)
+    this.sparkles.push({
+      sprite,
+      mat,
+      kind: 'mote',
+      age: 0,
+      life: 0.75,
+      baseScale: 0.3,
+      fromKey: lamKey,
+      toKey: redexKey,
+    })
   }
 
   // ---- WebXR session & input --------------------------------------------
@@ -312,4 +410,66 @@ export class SceneManager {
       this.onHoverNode?.(newAnyKey)
     }
   }
+}
+
+interface Sparkle {
+  sprite: THREE.Sprite
+  mat: THREE.SpriteMaterial
+  kind: 'glint' | 'mote'
+  age: number
+  life: number
+  baseScale: number
+  fromKey?: string
+  toKey?: string
+}
+
+let glintTex: THREE.Texture | null = null
+let moteTex: THREE.Texture | null = null
+
+/** A 4-point star glint with a soft radial halo. */
+function glintTexture(): THREE.Texture {
+  if (glintTex) return glintTex
+  const c = document.createElement('canvas')
+  c.width = c.height = 128
+  const g = c.getContext('2d')!
+  g.translate(64, 64)
+  const grad = g.createRadialGradient(0, 0, 0, 0, 0, 60)
+  grad.addColorStop(0, 'rgba(255,255,255,0.9)')
+  grad.addColorStop(0.25, 'rgba(205,218,255,0.25)')
+  grad.addColorStop(1, 'rgba(205,218,255,0)')
+  g.fillStyle = grad
+  g.fillRect(-64, -64, 128, 128)
+  g.fillStyle = 'rgba(255,255,255,0.95)'
+  const spike = (): void => {
+    g.beginPath()
+    g.moveTo(0, -56)
+    g.lineTo(4.5, 0)
+    g.lineTo(0, 56)
+    g.lineTo(-4.5, 0)
+    g.closePath()
+    g.fill()
+  }
+  spike()
+  g.rotate(Math.PI / 2)
+  spike()
+  glintTex = new THREE.CanvasTexture(c)
+  glintTex.colorSpace = THREE.SRGBColorSpace
+  return glintTex
+}
+
+/** A soft round glow dot for the edge-travelling mote. */
+function moteTexture(): THREE.Texture {
+  if (moteTex) return moteTex
+  const c = document.createElement('canvas')
+  c.width = c.height = 64
+  const g = c.getContext('2d')!
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32)
+  grad.addColorStop(0, 'rgba(255,255,255,1)')
+  grad.addColorStop(0.35, 'rgba(255,255,255,0.5)')
+  grad.addColorStop(1, 'rgba(255,255,255,0)')
+  g.fillStyle = grad
+  g.fillRect(0, 0, 64, 64)
+  moteTex = new THREE.CanvasTexture(c)
+  moteTex.colorSpace = THREE.SRGBColorSpace
+  return moteTex
 }
