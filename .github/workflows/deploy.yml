@@ -24,6 +24,8 @@ jobs:
       # magic-nix-cache uses the GitHub Actions cache — no account needed
       # (FlakeHub Cache would require registering the mdr org at flakehub.com)
       - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false # not registered on flakehub.com; Actions cache only
       - uses: actions/cache@v4
         with:
           path: ~/.npm
