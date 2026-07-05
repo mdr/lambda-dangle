@@ -151,7 +151,11 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
         fromPos: nv.mesh.position.clone(),
         fromScale: nv.mesh.scale.x,
       }))
-      for (const nv of argNodes) nv.frozen = true
+      for (const nv of argNodes) {
+        nv.frozen = true
+        nv.material.depthWrite = false
+        if (nv.edgeMaterial) nv.edgeMaterial.depthWrite = false
+      }
       await animator.tween(D.fly * 0.8, (k) => {
         for (const p of parts) {
           p.nv.mesh.position.lerpVectors(p.fromPos, centroid, k)
@@ -209,9 +213,14 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
               pt.addScaledVector(to, k * k)
               proxy.position.copy(pt)
             }, easeInOut)
-            // the variable sphere it lands on fades out
-            await animator.tween(0.18, (k) => {
+            // the variable sphere it lands on dissolves: luminous while its
+            // alpha drops (not dimming to black), shrinking as if absorbed,
+            // with depth-write off so it never silhouettes what's behind
+            target.material.depthWrite = false
+            await animator.tween(0.22, (k) => {
               target.material.opacity = 1 - k
+              target.material.emissiveIntensity = target.baseEmissive * (1 + 0.8 * k)
+              target.mesh.scale.setScalar(1 - 0.55 * k)
               if (target.tetherMaterial) target.tetherMaterial.opacity = (1 - k) * 0.5
               if (target.label) target.label.visible = false
             })
@@ -221,7 +230,11 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
       // the original argument fades once its copies are away
       const fade = (async () => {
         await animator.delay(D.fly * 0.55)
-        for (const nv of argNodes) nv.frozen = true
+        for (const nv of argNodes) {
+          nv.frozen = true
+          nv.material.depthWrite = false
+          if (nv.edgeMaterial) nv.edgeMaterial.depthWrite = false
+        }
         await animator.tween(0.3, (k) => {
           for (const nv of argNodes) {
             nv.material.opacity = 1 - k
@@ -242,7 +255,11 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
     const appNv = oldView.nodes.get(redexKey)
     if (lamNv) collapse.push(lamNv)
     if (appNv) collapse.push(appNv)
-    for (const nv of collapse) nv.frozen = true
+    for (const nv of collapse) {
+      nv.frozen = true
+      nv.material.depthWrite = false
+      if (nv.edgeMaterial) nv.edgeMaterial.depthWrite = false
+    }
     await animator.tween(D.merge, (k) => {
       for (const nv of collapse) {
         nv.mesh.scale.setScalar(Math.max(0.01, 1 - k))
