@@ -155,11 +155,19 @@ class App {
     while (this.running && steps < RUN_STEP_CAP) {
       const r = pickRedex(this.current, this.strategy)
       if (!r) break
-      this.reduceAt(r, false)
-      steps++
-      // watchable at first, then hurry — divergent terms shouldn't take
-      // minutes to reach the step cap
-      await sleep(steps < 40 ? 150 : steps < 200 ? 40 : 8)
+      if (this.animator.instant) {
+        this.reduceAt(r, false)
+        steps++
+        // watchable at first, then hurry — divergent terms shouldn't take
+        // minutes to reach the step cap
+        await sleep(steps < 40 ? 150 : steps < 200 ? 40 : 8)
+      } else {
+        // full choreography per step; instant can be toggled mid-run
+        this.reduceAt(r, true)
+        steps++
+        await this.pending
+        await sleep(150)
+      }
     }
     if (steps >= RUN_STEP_CAP) {
       this.setMessage(`gave up after ${RUN_STEP_CAP} steps — this term is likely divergent`)

@@ -21,7 +21,9 @@ jobs:
       - uses: actions/checkout@v7
       # toolchain comes from flake.nix/flake.lock — same node as local dev
       - uses: DeterminateSystems/determinate-nix-action@v3
-      - uses: DeterminateSystems/flakehub-cache-action@main
+      # magic-nix-cache uses the GitHub Actions cache — no account needed
+      # (FlakeHub Cache would require registering the mdr org at flakehub.com)
+      - uses: DeterminateSystems/magic-nix-cache-action@main
       - uses: actions/cache@v4
         with:
           path: ~/.npm
