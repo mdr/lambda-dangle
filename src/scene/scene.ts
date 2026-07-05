@@ -33,8 +33,11 @@ export class SceneManager {
   private controllers: THREE.Object3D[] = []
   private prevButtons = new Map<string, boolean[]>()
   private recenterTarget = new THREE.Vector3()
-  /** Player rig: camera + controllers; moved by left-stick locomotion. */
+  /** Player rig: camera + controllers; moved by left-stick locomotion,
+   *  yawed by right-stick snap turns. */
   private dolly = new THREE.Group()
+  /** Snap-turn hysteresis: re-armed when the right stick returns to center. */
+  private snapArmed = true
   private vrPanel = new VRPanel()
   private panelHoverId: string | null = null
 
@@ -361,6 +364,7 @@ export class SceneManager {
     this.worldGroup.position.set(0, 1.35, -1.1)
     this.worldGroup.rotation.set(0, 0, 0)
     this.dolly.position.set(0, 0, 0)
+    this.dolly.quaternion.identity()
     if (this.vrPanel.group.visible) this.vrPanel.toggle()
     this.grid.visible = true
   }
@@ -371,6 +375,7 @@ export class SceneManager {
     this.worldGroup.rotation.set(0, 0, 0)
     this.contentGroup.position.set(0, 0, 0)
     this.dolly.position.set(0, 0, 0)
+    this.dolly.quaternion.identity()
     this.grid.visible = false
   }
 
@@ -378,25 +383,42 @@ export class SceneManager {
     this.vrPanel.setLabel(id, label)
   }
 
+  private setRayFrom(controller: THREE.Object3D): void {
+    tmpMat.identity().extractRotation(controller.matrixWorld)
+    this.raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld)
+    this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tmpMat)
+  }
+
   private xrPick(view: TermView): void {
-    const m = new THREE.Matrix4()
-    let found: string | null = null
+    // controller/panel matrixWorlds otherwise lag a frame behind the poses
+    this.dolly.updateMatrixWorld(true)
+
+    // Panel first — it takes priority over redexes behind it. Only a
+    // controller NOT wearing the panel can point at it: the wearing hand's
+    // own forward ray pierces its board and would permanently steal hover.
     let panelId: string | null = null
     for (const controller of this.controllers) {
-      m.identity().extractRotation(controller.matrixWorld)
-      this.raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld)
-      this.raycaster.ray.direction.set(0, 0, -1).applyMatrix4(m)
-      // the panel takes priority over redexes behind it
+      if (this.vrPanel.group.parent === controller) continue
+      this.setRayFrom(controller)
       panelId = this.vrPanel.hitTest(this.raycaster)
       if (panelId !== null) break
-      const hits = this.raycaster.intersectObjects(view.redexMeshes(), false)
-      if (hits.length > 0) {
-        found = hits[0].object.userData.key as string
-        break
+    }
+    this.vrPanel.setHover(panelId)
+    this.panelHoverId = panelId
+
+    let found: string | null = null
+    if (panelId === null) {
+      for (const controller of this.controllers) {
+        // while the panel is up, its wearing hand is a menu, not a pointer
+        if (this.vrPanel.group.visible && this.vrPanel.group.parent === controller) continue
+        this.setRayFrom(controller)
+        const hits = this.raycaster.intersectObjects(view.redexMeshes(), false)
+        if (hits.length > 0) {
+          found = hits[0].object.userData.key as string
+          break
+        }
       }
     }
-    this.panelHoverId = panelId
-    if (panelId !== null) found = null
     if (found !== this.hoveredRedexKey) {
       if (this.hoveredRedexKey !== null) view.setRedexHighlight(this.hoveredRedexKey, false)
       if (found !== null) view.setRedexHighlight(found, true)
@@ -407,7 +429,15 @@ export class SceneManager {
   private xrSelect(): void {
     if (this.panelHoverId !== null) {
       this.vrPanel.flash(this.panelHoverId)
-      this.onXRAction?.(this.panelHoverId)
+      // term sizing is a scene concern; everything else goes to the app
+      if (this.panelHoverId === 'scale:+' || this.panelHoverId === 'scale:-') {
+        const f = this.panelHoverId === 'scale:+' ? 1.3 : 1 / 1.3
+        this.worldGroup.scale.setScalar(
+          THREE.MathUtils.clamp(this.worldGroup.scale.x * f, 0.008, 0.6),
+        )
+      } else {
+        this.onXRAction?.(this.panelHoverId)
+      }
       return
     }
     if (this.hoveredRedexKey !== null && this.currentView && this.onRedexClick) {
@@ -417,7 +447,7 @@ export class SceneManager {
   }
 
   /** Quest controllers (xr-standard mapping): right A/B = step/back and the
-   *  right stick rotates/scales the term; the left stick moves you through
+   *  right stick snap-turns your view; the left stick moves you through
    *  the space, left X toggles the control panel, left Y runs. */
   private pollGamepads(dt: number): void {
     const session = this.renderer.xr.getSession()
@@ -433,10 +463,13 @@ export class SceneManager {
       if (src.handedness === 'right') {
         if (edge(4)) this.onXRAction?.('step')
         if (edge(5)) this.onXRAction?.('back')
-        if (Math.abs(ax) > 0.15) this.worldGroup.rotation.y -= ax * dt * 1.8
-        if (Math.abs(ay) > 0.15) {
-          const s = THREE.MathUtils.clamp(this.worldGroup.scale.x * (1 - ay * dt), 0.008, 0.6)
-          this.worldGroup.scale.setScalar(s)
+        // snap turn (VR comfort standard): one 30° turn per stick flick,
+        // re-armed only once the stick returns near center
+        if (this.snapArmed && Math.abs(ax) > 0.6) {
+          this.snapTurn(-Math.sign(ax) * (Math.PI / 6))
+          this.snapArmed = false
+        } else if (Math.abs(ax) < 0.3) {
+          this.snapArmed = true
         }
       } else {
         if (edge(4)) this.vrPanel.toggle()
@@ -456,6 +489,15 @@ export class SceneManager {
       }
       this.prevButtons.set(src.handedness, pressed)
     }
+  }
+
+  /** Yaw the player rig about the wearer's HEAD (not the rig origin), so a
+   *  turn never also translates someone who has physically walked around. */
+  private snapTurn(angle: number): void {
+    this.camera.getWorldPosition(tmpHead)
+    tmpQuat.setFromAxisAngle(UP_Y, angle)
+    this.dolly.quaternion.premultiply(tmpQuat)
+    this.dolly.position.sub(tmpHead).applyQuaternion(tmpQuat).add(tmpHead)
   }
 
   private pick(view: TermView): void {
@@ -482,6 +524,9 @@ export class SceneManager {
 const UP_Y = new THREE.Vector3(0, 1, 0)
 const tmpFwd = new THREE.Vector3()
 const tmpRight = new THREE.Vector3()
+const tmpHead = new THREE.Vector3()
+const tmpQuat = new THREE.Quaternion()
+const tmpMat = new THREE.Matrix4()
 
 interface Sparkle {
   sprite: THREE.Sprite

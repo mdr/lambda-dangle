@@ -90,11 +90,37 @@ const GEO = {
 const HIT_GEO = new THREE.SphereGeometry(0.52, 8, 6)
 const HIT_MAT = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
 
-const TETHER_POINTS = 28
+export const TETHER_POINTS = 28
 const UP = new THREE.Vector3(0, 1, 0)
 const tmpDir = new THREE.Vector3()
 const tmpMid = new THREE.Vector3()
 const tmpPt = new THREE.Vector3()
+
+/** An empty tether polyline geometry; fill with writeTetherCurve. */
+export function makeTetherGeometry(): THREE.BufferGeometry {
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TETHER_POINTS * 3), 3))
+  return geo
+}
+
+/** Write the binding arc from variable `a` to binder `b` into `geo`: a
+ *  quadratic bezier whose control point is pushed away from the camera so
+ *  tethers arc through depth BEHIND the tree instead of crossing in front. */
+export function writeTetherCurve(geo: THREE.BufferGeometry, a: THREE.Vector3, b: THREE.Vector3): void {
+  const dist = a.distanceTo(b)
+  tmpMid.addVectors(a, b).multiplyScalar(0.5)
+  tmpMid.z -= 1.1 + dist * 0.22
+  const attr = geo.getAttribute('position') as THREE.BufferAttribute
+  for (let i = 0; i < TETHER_POINTS; i++) {
+    const t = i / (TETHER_POINTS - 1)
+    tmpPt.set(0, 0, 0)
+    tmpPt.addScaledVector(a, (1 - t) * (1 - t))
+    tmpPt.addScaledVector(tmpMid, 2 * (1 - t) * t)
+    tmpPt.addScaledVector(b, t * t)
+    attr.setXYZ(i, tmpPt.x, tmpPt.y, tmpPt.z)
+  }
+  attr.needsUpdate = true
+}
 
 export interface NodeView {
   info: NodeInfo
@@ -213,12 +239,7 @@ export class TermView {
           blending: THREE.AdditiveBlending,
           depthWrite: false,
         })
-        const geo = new THREE.BufferGeometry()
-        geo.setAttribute(
-          'position',
-          new THREE.BufferAttribute(new Float32Array(TETHER_POINTS * 3), 3),
-        )
-        tether = new THREE.Line(geo, tetherMaterial)
+        tether = new THREE.Line(makeTetherGeometry(), tetherMaterial)
         this.group.add(tether)
       }
 
@@ -282,26 +303,7 @@ export class TermView {
       }
       if (nv.tether && nv.info.binderKey !== null) {
         const binder = this.nodes.get(nv.info.binderKey)
-        if (binder) {
-          const a = nv.mesh.position
-          const b = binder.mesh.position
-          const dist = a.distanceTo(b)
-          // control point pushed away from the camera so tethers arc through
-          // depth BEHIND the tree instead of crossing in front of it
-          tmpMid.addVectors(a, b).multiplyScalar(0.5)
-          tmpMid.z -= 1.1 + dist * 0.22
-          const attr = nv.tether.geometry.getAttribute('position') as THREE.BufferAttribute
-          for (let i = 0; i < TETHER_POINTS; i++) {
-            const t = i / (TETHER_POINTS - 1)
-            // quadratic bezier
-            tmpPt.set(0, 0, 0)
-            tmpPt.addScaledVector(a, (1 - t) * (1 - t))
-            tmpPt.addScaledVector(tmpMid, 2 * (1 - t) * t)
-            tmpPt.addScaledVector(b, t * t)
-            attr.setXYZ(i, tmpPt.x, tmpPt.y, tmpPt.z)
-          }
-          attr.needsUpdate = true
-        }
+        if (binder) writeTetherCurve(nv.tether.geometry, nv.mesh.position, binder.mesh.position)
       }
     }
   }

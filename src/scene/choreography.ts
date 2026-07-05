@@ -1,7 +1,14 @@
 import * as THREE from 'three'
 import { Term, Path, pathKey, boundVarOccurrences } from '../lambda/term'
 import { Animator, easeInOut, easeOut, linear } from './tween'
-import { TermView, NodeView, EDGE_BASE_EMISSIVE, EDGE_HOT_EMISSIVE } from './view'
+import {
+  TermView,
+  NodeView,
+  EDGE_BASE_EMISSIVE,
+  EDGE_HOT_EMISSIVE,
+  makeTetherGeometry,
+  writeTetherCurve,
+} from './view'
 
 // The five-phase beta choreography:
 //   1 focus     — redex lifts toward camera, everything else dims
@@ -138,6 +145,9 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
 
   // ---- phase 3: copy & fly ---------------------------------------------
   const proxies: THREE.Group[] = []
+  // live binding arcs from flying copies out to binders in the wider tree —
+  // scene-level objects, rebuilt every frame of the flight
+  const outerTethers: { line: THREE.Line; mat: THREE.LineBasicMaterial }[] = []
   {
     const argNodes = argKeys.map((k) => oldView.nodes.get(k)!).filter(Boolean)
     const centroid = new THREE.Vector3()
@@ -172,10 +182,14 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
       // The proxy is anchored at the argument's ROOT node so the root — not
       // the subtree's centroid — lands exactly on the variable it replaces.
       const anchor = (oldView.nodes.get(argKey)?.mesh.position ?? centroid).clone()
+      const argKeySet = new Set(argKeys)
       const flights: Promise<void>[] = []
       occurrences.forEach((oKey, i) => {
         const target = oldView.nodes.get(oKey)!
         const proxy = new THREE.Group()
+        // bindings whose binder travels too are rigid in proxy space;
+        // bindings out to the enclosing tree need per-frame rebuilding
+        const proxyOuter: { line: THREE.Line; local: THREE.Vector3; binder: NodeView }[] = []
         for (const nv of argNodes) {
           const m = nv.mesh.clone()
           m.material = nv.material.clone()
@@ -189,10 +203,47 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
             e.position.sub(anchor)
             proxy.add(e)
           }
+          // the copy keeps its variables' binding arcs: a variable IS its
+          // tether, so the identity must stay visible mid-flight
+          if (nv.tether && nv.info.binderKey !== null) {
+            const binderNv = oldView.nodes.get(nv.info.binderKey)
+            if (binderNv) {
+              const mat = nv.tetherMaterial!.clone()
+              mat.opacity = 0.55
+              const line = new THREE.Line(makeTetherGeometry(), mat)
+              line.frustumCulled = false
+              if (argKeySet.has(nv.info.binderKey)) {
+                writeTetherCurve(
+                  line.geometry,
+                  nv.mesh.position.clone().sub(anchor),
+                  binderNv.mesh.position.clone().sub(anchor),
+                )
+                proxy.add(line)
+              } else {
+                ctx.sceneAdd(line)
+                outerTethers.push({ line, mat })
+                proxyOuter.push({
+                  line,
+                  local: nv.mesh.position.clone().sub(anchor),
+                  binder: binderNv,
+                })
+              }
+            }
+          }
         }
         proxy.position.copy(anchor)
         ctx.sceneAdd(proxy)
         proxies.push(proxy)
+        const updateOuter = (): void => {
+          for (const o of proxyOuter) {
+            writeTetherCurve(
+              o.line.geometry,
+              tmpVarPos.copy(o.local).add(proxy.position),
+              o.binder.mesh.position,
+            )
+          }
+        }
+        updateOuter()
 
         const from = anchor.clone()
         const to = target.mesh.position.clone()
@@ -212,6 +263,7 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
               pt.addScaledVector(mid, 2 * (1 - k) * k)
               pt.addScaledVector(to, k * k)
               proxy.position.copy(pt)
+              updateOuter()
             }, easeInOut)
             // the variable sphere it lands on dissolves: luminous while its
             // alpha drops (not dimming to black), shrinking as if absorbed,
@@ -280,6 +332,11 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
     // swap: old view and proxies out, new view (parked at sources) in
     oldView.dispose()
     for (const p of proxies) ctx.sceneRemove(p)
+    for (const t of outerTethers) {
+      ctx.sceneRemove(t.line)
+      t.line.geometry.dispose()
+      t.mat.dispose()
+    }
 
     const inRedex = (key: string): boolean =>
       redexKey === '' || key === redexKey || key.startsWith(redexKey + '/')
@@ -365,6 +422,8 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
     return newView
   }
 }
+
+const tmpVarPos = new THREE.Vector3()
 
 /** Steps between two tree paths (up to the common ancestor, then down). */
 function treeDistance(a: Path, b: Path): number {

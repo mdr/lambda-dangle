@@ -37,6 +37,10 @@ export class VRPanel {
         { id: 'run', label: '⏵ run', w: 0.136 },
         { id: 'reset', label: '⏮ reset', w: 0.136 },
       ],
+      [
+        { id: 'scale:-', label: '⊖ smaller', w: 0.136 },
+        { id: 'scale:+', label: '⊕ bigger', w: 0.136 },
+      ],
       [{ id: 'strategy', label: 'strategy: normal', w: 0.279 }],
       ...PRESETS.map((p, i) => [{ id: `preset:${i}`, label: p.name, w: 0.279 }]),
     ]
@@ -74,7 +78,9 @@ export class VRPanel {
     drawButton(canvas, def.label)
     const tex = new THREE.CanvasTexture(canvas)
     tex.colorSpace = THREE.SRGBColorSpace
-    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true })
+    // DoubleSide so the selecting ray can hit the tilted board from any
+    // approach angle (FrontSide planes are invisible to back-face raycasts)
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide })
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(def.w, BTN_H), mat)
     mesh.position.set(x, y, 0)
     mesh.userData.buttonId = def.id
@@ -95,20 +101,16 @@ export class VRPanel {
     return this.group.visible
   }
 
-  /** Raycast the panel; updates hover highlight, returns the hit button id. */
+  /** Raycast the panel's buttons; pure — hover is set separately so several
+   *  controllers can be tested before committing a single hover state. */
   hitTest(raycaster: THREE.Raycaster): string | null {
-    if (!this.group.visible) {
-      this.setHover(null)
-      return null
-    }
+    if (!this.group.visible) return null
     const meshes = [...this.buttons.values()].map((b) => b.mesh)
     const hits = raycaster.intersectObjects(meshes, false)
-    const id = hits.length > 0 ? (hits[0].object.userData.buttonId as string) : null
-    this.setHover(id)
-    return id
+    return hits.length > 0 ? (hits[0].object.userData.buttonId as string) : null
   }
 
-  private setHover(id: string | null): void {
+  setHover(id: string | null): void {
     if (id === this.hoveredId) return
     if (this.hoveredId !== null) this.buttons.get(this.hoveredId)?.mat.color.set('#ffffff')
     if (id !== null) this.buttons.get(id)?.mat.color.set('#8f9dff')

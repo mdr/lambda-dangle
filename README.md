@@ -51,13 +51,15 @@ The term floats at tabletop scale in front of you.
 
 | control                | action                                        |
 | ---------------------- | --------------------------------------------- |
-| point + trigger        | fire the redex you're pointing at             |
+| point + trigger        | fire the redex you're pointing at, or click a |
+|                        | panel button                                  |
 | right A / B            | step / back                                   |
 | left X                 | show/hide the control panel (presets,         |
-|                        | strategy, reset, transport) on your left hand |
+|                        | strategy, size, reset, transport) on your     |
+|                        | left hand                                     |
 | left Y                 | run to normal form                            |
 | left stick             | move around the space                         |
-| right stick ←→ / ↑↓    | rotate / scale the term                       |
+| right stick ←→         | snap turn (30° per flick)                     |
 
 Bloom is disabled inside VR (post-processing doesn't support per-eye
 rendering); everything else — choreography, presets, strategies — works
