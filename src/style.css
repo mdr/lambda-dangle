@@ -299,6 +299,14 @@ body {
   color: #ffb454;
 }
 
+/* three.js VRButton reassigns its inline styles on XR feature detection;
+   pin it to the corner regardless so it never overlaps the transport */
+#VRButton {
+  left: auto !important;
+  right: 16px !important;
+  bottom: 16px !important;
+}
+
 #message {
   padding: 7px 14px;
   background: rgba(255, 180, 84, 0.12);
