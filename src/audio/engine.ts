@@ -21,6 +21,8 @@ export interface ToneOpts {
   detune?: number
   /** Start this many seconds in the future. */
   delay?: number
+  /** Mix group: 'ambient' voices duck under the choreography. */
+  bus?: 'sfx' | 'ambient'
 }
 
 export interface ChimeOpts {
@@ -30,6 +32,7 @@ export interface ChimeOpts {
   pan?: number
   wet?: number
   delay?: number
+  bus?: 'sfx' | 'ambient'
 }
 
 export interface WashOpts {
@@ -48,6 +51,9 @@ export class AudioEngine {
   private master: GainNode | null = null
   private dryBus: GainNode | null = null
   private wetBus: GainNode | null = null
+  /** Ambient group: dry path and reverb send, both duckable. */
+  private ambDry: GainNode | null = null
+  private ambSend: GainNode | null = null
   private noiseBuf: AudioBuffer | null = null
   enabled = false
 
@@ -64,11 +70,12 @@ export class AudioEngine {
     return this.noiseBuf
   }
 
-  /** Must be called from a user gesture (browser autoplay policy). */
+  /** Ideally called from a user gesture; outside one, the context stays
+   *  suspended (autoplay policy) and wakes on the next enable() call. */
   enable(): void {
     if (!this.ctx) this.init()
     const ctx = this.ctx!
-    void ctx.resume()
+    ctx.resume().catch(() => {})
     this.enabled = true
     this.master!.gain.cancelScheduledValues(ctx.currentTime)
     this.master!.gain.setTargetAtTime(MASTER_LEVEL, ctx.currentTime, 0.15)
@@ -98,11 +105,29 @@ export class AudioEngine {
     this.wetBus.connect(convolver)
     convolver.connect(this.master)
 
+    this.ambDry = ctx.createGain()
+    this.ambDry.connect(this.master)
+    this.ambSend = ctx.createGain()
+    this.ambSend.connect(this.wetBus)
+
     this.noiseBuf = noiseBuffer(ctx, 2)
   }
 
-  /** Wire a voice's output into the mix: pan, then dry + reverb send. */
-  route(node: AudioNode, pan = 0, wet = 0.5): void {
+  /** Sidechain-style duck: the ambient bed dips fast under the
+   *  choreography and swells back slowly afterwards. Reverb tails already
+   *  in the hall keep ringing, which is what a real room would do. */
+  duck(on: boolean): void {
+    if (!this.ctx || !this.ambDry || !this.ambSend) return
+    const t = this.ctx.currentTime
+    const g = on ? 0.2 : 1
+    const tau = on ? 0.2 : 1.5
+    this.ambDry.gain.setTargetAtTime(g, t, tau)
+    this.ambSend.gain.setTargetAtTime(g, t, tau)
+  }
+
+  /** Wire a voice's output into the mix: pan, then dry + reverb send.
+   *  Ambient-bus voices go through the duckable group instead. */
+  route(node: AudioNode, pan = 0, wet = 0.5, bus: 'sfx' | 'ambient' = 'sfx'): void {
     const ctx = this.ctx!
     const p = ctx.createStereoPanner()
     p.pan.value = Math.max(-1, Math.min(1, pan))
@@ -110,11 +135,11 @@ export class AudioEngine {
     const dry = ctx.createGain()
     dry.gain.value = 1 - wet * 0.5
     p.connect(dry)
-    dry.connect(this.dryBus!)
+    dry.connect(bus === 'ambient' ? this.ambDry! : this.dryBus!)
     const send = ctx.createGain()
     send.gain.value = wet
     p.connect(send)
-    send.connect(this.wetBus!)
+    send.connect(bus === 'ambient' ? this.ambSend! : this.wetBus!)
   }
 
   /** One enveloped oscillator: linear attack, exponential decay. */
@@ -135,7 +160,7 @@ export class AudioEngine {
     env.gain.linearRampToValueAtTime(o.gain, t + attack)
     env.gain.exponentialRampToValueAtTime(0.0001, t + o.dur)
     osc.connect(env)
-    this.route(env, o.pan, o.wet)
+    this.route(env, o.pan, o.wet, o.bus)
     osc.start(t)
     osc.stop(t + o.dur + 0.1)
   }
@@ -157,6 +182,7 @@ export class AudioEngine {
         pan: o.pan,
         wet: o.wet ?? 0.75,
         delay: o.delay,
+        bus: o.bus,
       })
     }
   }

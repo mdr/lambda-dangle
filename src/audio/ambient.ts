@@ -16,7 +16,7 @@ const CHORDS: number[][] = [
   [-5, 7, 12, 21], // G · A · D · B    plagal drift
 ]
 
-const VOICE_GAINS = [0.075, 0.05, 0.042, 0.03]
+const VOICE_GAINS = [0.04, 0.027, 0.022, 0.016]
 const PENTA = [0, 2, 4, 7, 9]
 
 interface Voice {
@@ -45,7 +45,7 @@ export class Ambient {
     const lowpass = ctx.createBiquadFilter()
     lowpass.type = 'lowpass'
     lowpass.frequency.value = 750
-    this.eng.route(lowpass, 0, 0.75)
+    this.eng.route(lowpass, 0, 0.75, 'ambient')
 
     CHORDS[0].forEach((semi, i) => {
       const freq = ROOT * Math.pow(2, semi / 12)
@@ -86,10 +86,10 @@ export class Ambient {
       bp.frequency.value = 1600
       bp.Q.value = 0.7
       const g = ctx.createGain()
-      g.gain.value = 0.008
+      g.gain.value = 0.005
       src.connect(bp)
       bp.connect(g)
-      this.eng.route(g, 0, 0.6)
+      this.eng.route(g, 0, 0.6, 'ambient')
       src.start(t)
       this.extraStops.push(() => {
         g.gain.setTargetAtTime(0, ctx.currentTime, 0.2)
@@ -145,9 +145,10 @@ export class Ambient {
       this.eng.chime({
         freq: ROOT * octave * Math.pow(2, semi / 12),
         dur: 3 + Math.random() * 2,
-        gain: 0.025 + Math.random() * 0.02,
+        gain: 0.016 + Math.random() * 0.012,
         pan: (Math.random() - 0.5) * 1.2,
         wet: 0.9,
+        bus: 'ambient',
       })
       this.scheduleStar()
     }, 6000 + Math.random() * 9000)

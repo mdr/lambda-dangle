@@ -114,6 +114,7 @@ class App {
     const oldView = this.sceneMgr.currentView!
     this.animating = true
     this.sceneMgr.sparklesSuppressed = true
+    audio.duck(true) // ambient bed dips under the choreography
     this.pending = this.pending.then(async () => {
       const newView = await animateBeta({
         animator: this.animator,
@@ -131,6 +132,7 @@ class App {
       this.animator.endSkip()
       this.animating = false
       this.sceneMgr.sparklesSuppressed = this.running
+      audio.duck(false) // slow recovery; consecutive run steps re-duck fast
       this.updateHud()
     })
   }
@@ -356,16 +358,31 @@ class App {
 
     // toggles
     const sound = $<HTMLInputElement>('sound-toggle')
+    const startAudio = (): void => {
+      if (!sound.checked) return
+      audio.enable()
+      ambient.start()
+    }
     sound.addEventListener('change', () => {
       // the change event is a user gesture, so the AudioContext may start
       if (sound.checked) {
-        audio.enable()
-        ambient.start()
+        startAudio()
       } else {
         ambient.stop()
         audio.disable()
       }
     })
+    // sound is on by default, but browsers gate audio behind the first user
+    // gesture — arm it now (the context wakes once a gesture lands) and
+    // nudge it again on the first interaction of any kind
+    startAudio()
+    const firstGesture = (): void => {
+      startAudio()
+      window.removeEventListener('pointerdown', firstGesture)
+      window.removeEventListener('keydown', firstGesture)
+    }
+    window.addEventListener('pointerdown', firstGesture)
+    window.addEventListener('keydown', firstGesture)
     const labels = $<HTMLInputElement>('labels-toggle')
     labels.addEventListener('change', () => {
       this.labelsOn = labels.checked
