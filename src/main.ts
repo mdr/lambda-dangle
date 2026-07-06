@@ -10,6 +10,7 @@ import { SceneManager } from './scene/scene'
 import { TermView } from './scene/view'
 import { animateBeta } from './scene/choreography'
 import { settleSources } from './scene/correspond'
+import { audio, ambient } from './audio'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 
@@ -40,7 +41,10 @@ class App {
     this.loadSource(PRESETS[4].src) // PLUS 2 3 — the best first impression
     this.markActivePreset(4)
     // debug/testing handle
-    ;(window as unknown as Record<string, unknown>).__lambdaDangle = { sceneMgr: this.sceneMgr }
+    ;(window as unknown as Record<string, unknown>).__lambdaDangle = {
+      sceneMgr: this.sceneMgr,
+      audio,
+    }
   }
 
   private get current(): Term {
@@ -351,6 +355,17 @@ class App {
     })
 
     // toggles
+    const sound = $<HTMLInputElement>('sound-toggle')
+    sound.addEventListener('change', () => {
+      // the change event is a user gesture, so the AudioContext may start
+      if (sound.checked) {
+        audio.enable()
+        ambient.start()
+      } else {
+        ambient.stop()
+        audio.disable()
+      }
+    })
     const labels = $<HTMLInputElement>('labels-toggle')
     labels.addEventListener('change', () => {
       this.labelsOn = labels.checked

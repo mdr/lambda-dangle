@@ -9,6 +9,7 @@ import {
   makeTetherGeometry,
   writeTetherCurve,
 } from './view'
+import { sfx } from '../audio'
 
 // The five-phase beta choreography:
 //   1 focus     — redex lifts toward camera, everything else dims
@@ -57,6 +58,15 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
   const argKeys = oldView.keysUnder(argKey)
   const occurrences = boundVarOccurrences(oldTerm, lamPath).map(pathKey)
 
+  // Sound cues fire alongside each phase, sized to the phase's wall-clock
+  // length (tween durations divide by the speed dial). Silent when the
+  // choreography is being skipped or run instantly.
+  const cue = (fn: () => void): void => {
+    if (!animator.instant && !animator.skipping) fn()
+  }
+  const wall = (dur: number): number => dur / Math.max(0.1, animator.speed)
+  const panOf = (x: number): number => Math.max(-0.7, Math.min(0.7, x * 0.06))
+
   // ---- phase 1: focus -------------------------------------------------
   {
     const dims: { m: THREE.Material & { opacity: number }; from: number; to: number }[] = []
@@ -74,6 +84,7 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
     }
     const b = oldView.boundsOf(redexKeys)
     ctx.frame(b.center.clone().add(new THREE.Vector3(0, 0, 1)), b.radius)
+    cue(() => sfx.focus(wall(D.focus)))
     await animator.tween(D.focus, (k) => {
       for (const d of dims) d.m.opacity = d.from + (d.to - d.from) * k
       for (const l of lifts) l.mesh.position.z = l.from + (l.to - l.from) * k
@@ -88,6 +99,7 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
       .map((k) => oldView.nodes.get(k))
       .filter((nv): nv is NodeView => nv !== undefined)
     const lamNv = oldView.nodes.get(lamKey)
+    cue(() => sfx.identify(wall(D.identifyTrio)))
     await animator.tween(D.identifyTrio, (k) => {
       const s = Math.sin(k * Math.PI)
       for (const nv of pair) {
@@ -111,6 +123,7 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
       const nv = oldView.nodes.get(oKey)
       if (nv) pulseTargets.push(nv)
     }
+    cue(() => sfx.binding(wall(D.identify), occurrences.length))
     await animator.tween(D.identify, (k) => {
       const s = 1 + 0.4 * Math.sin(k * Math.PI * 2) * (k < 1 ? 1 : 0)
       for (const nv of pulseTargets) {
@@ -128,6 +141,7 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
       .keysUnder(argKey)
       .map((k) => oldView.nodes.get(k))
       .filter((nv): nv is NodeView => nv !== undefined)
+    cue(() => sfx.argument(wall(D.identifyArg)))
     await animator.tween(D.identifyArg, (k) => {
       const s = Math.sin(k * Math.PI)
       for (const nv of argNvs) {
@@ -166,6 +180,7 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
         nv.material.depthWrite = false
         if (nv.edgeMaterial) nv.edgeMaterial.depthWrite = false
       }
+      cue(() => sfx.evaporate(wall(D.fly * 0.8)))
       await animator.tween(D.fly * 0.8, (k) => {
         for (const p of parts) {
           p.nv.mesh.position.lerpVectors(p.fromPos, centroid, k)
@@ -184,6 +199,7 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
       const anchor = (oldView.nodes.get(argKey)?.mesh.position ?? centroid).clone()
       const argKeySet = new Set(argKeys)
       const flights: Promise<void>[] = []
+      cue(() => sfx.fly(wall(D.fly + D.stagger * (occurrences.length - 1)), occurrences.length))
       occurrences.forEach((oKey, i) => {
         const target = oldView.nodes.get(oKey)!
         const proxy = new THREE.Group()
@@ -265,6 +281,9 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
               proxy.position.copy(pt)
               updateOuter()
             }, easeInOut)
+            // landing chime in the binder's hue: one binder, one note, so
+            // several occurrences read as the same variable being filled
+            cue(() => sfx.land(target.info.hue, panOf(target.mesh.position.x)))
             // the variable sphere it lands on dissolves: luminous while its
             // alpha drops (not dimming to black), shrinking as if absorbed,
             // with depth-write off so it never silhouettes what's behind
@@ -312,6 +331,7 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
       nv.material.depthWrite = false
       if (nv.edgeMaterial) nv.edgeMaterial.depthWrite = false
     }
+    cue(() => sfx.merge(wall(D.merge)))
     await animator.tween(D.merge, (k) => {
       for (const nv of collapse) {
         nv.mesh.scale.setScalar(Math.max(0.01, 1 - k))
@@ -401,6 +421,7 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
     ctx.frame(center, radius + 2)
 
     const total = D.settle + maxDelay
+    cue(() => sfx.settle(wall(total)))
     await animator.tween(
       total,
       (k) => {

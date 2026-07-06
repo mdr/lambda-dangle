@@ -9,6 +9,7 @@ import { Path } from '../lambda/term'
 import { TermView, pathOfMesh } from './view'
 import { Animator, easeInOut } from './tween'
 import { VRPanel } from './vrpanel'
+import { sfx } from '../audio'
 
 export class SceneManager {
   readonly scene = new THREE.Scene()
@@ -327,6 +328,7 @@ export class SceneManager {
       .add(new THREE.Vector3((Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.6, 0.35))
     view.group.add(sprite)
     this.sparkles.push({ sprite, mat, kind: 'glint', age: 0, life: 0.5, baseScale: 0.85 })
+    sfx.sparkle(Math.max(-0.7, Math.min(0.7, nv.mesh.position.x * 0.06)))
   }
 
   private spawnMote(view: TermView): void {
