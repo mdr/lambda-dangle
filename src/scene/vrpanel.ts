@@ -42,7 +42,7 @@ export class VRPanel {
         { id: 'scale:+', label: '⊕ bigger', w: 0.136 },
       ],
       [{ id: 'strategy', label: 'strategy: normal', w: 0.279 }],
-      ...PRESETS.map((p, i) => [{ id: `preset:${i}`, label: p.name, w: 0.279 }]),
+      ...pairs(PRESETS.map((p, i) => ({ id: `preset:${i}`, label: p.name, w: 0.136 }))),
     ]
 
     const totalH = rows.length * (BTN_H + GAP) + GAP + 0.012
@@ -125,6 +125,13 @@ export class VRPanel {
   }
 }
 
+/** Chunk buttons into rows of two (presets read as a compact grid). */
+function pairs(defs: ButtonDef[]): ButtonDef[][] {
+  const rows: ButtonDef[][] = []
+  for (let i = 0; i < defs.length; i += 2) rows.push(defs.slice(i, i + 2))
+  return rows
+}
+
 function drawButton(canvas: HTMLCanvasElement, label: string): void {
   const g = canvas.getContext('2d')!
   const w = canvas.width
@@ -144,7 +151,13 @@ function drawButton(canvas: HTMLCanvasElement, label: string): void {
   g.lineWidth = 2
   g.stroke()
   g.fillStyle = '#dfe5f2'
-  g.font = '600 30px ui-monospace, Menlo, monospace'
+  // shrink to fit: long names (AND TRUE FALSE) share rows with short ones
+  let size = 30
+  g.font = `600 ${size}px ui-monospace, Menlo, monospace`
+  while (size > 14 && g.measureText(label).width > w - 20) {
+    size -= 2
+    g.font = `600 ${size}px ui-monospace, Menlo, monospace`
+  }
   g.textAlign = 'center'
   g.textBaseline = 'middle'
   g.fillText(label, w / 2, h / 2 + 1)

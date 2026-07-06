@@ -192,3 +192,30 @@ describe('Church arithmetic computes', () => {
     expect(normalize(p('POW 2 3')).steps).toMatchInlineSnapshot(`16`)
   })
 })
+
+describe('presets', () => {
+  it('every gallery preset parses', async () => {
+    const { PRESETS } = await import('../ui/presets')
+    for (const preset of PRESETS) expect(() => p(preset.src)).not.toThrow()
+  })
+
+  it('capture demo: (λx. λy. x) y → λ_. y with the free y intact', () => {
+    const { result } = normalize(p('(λx. λy. x) y'))
+    expect(equal(result, p('λz. y'))).toBe(true)
+  })
+
+  it('NOT TRUE → FALSE', () => {
+    const { result } = normalize(p('NOT TRUE'))
+    expect(equal(result, DICTIONARY.get('FALSE')!)).toBe(true)
+  })
+
+  it('FST (PAIR x y) → x', () => {
+    const { result } = normalize(p('FST (PAIR x y)'))
+    expect(equal(result, p('x'))).toBe(true)
+  })
+
+  it('SUCC 2 → 3', () => {
+    const { result } = normalize(p('SUCC 2'))
+    expect(equal(result, church(3))).toBe(true)
+  })
+})

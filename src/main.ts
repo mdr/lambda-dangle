@@ -4,7 +4,7 @@ import { redexes, pickRedex, Strategy } from './lambda/reduce'
 import { parseWithDict } from './lambda/dict'
 import { ParseError } from './lambda/parser'
 import { assignNames, prettyPrint } from './lambda/pretty'
-import { PRESETS } from './ui/presets'
+import { PRESETS, DEFAULT_PRESET } from './ui/presets'
 import { Animator } from './scene/tween'
 import { SceneManager } from './scene/scene'
 import { TermView } from './scene/view'
@@ -38,8 +38,8 @@ class App {
 
   constructor() {
     this.wireUi()
-    this.loadSource(PRESETS[4].src) // PLUS 2 3 — the best first impression
-    this.markActivePreset(4)
+    this.loadSource(PRESETS[DEFAULT_PRESET].src) // PLUS 2 3 — the best first impression
+    this.markActivePreset(DEFAULT_PRESET)
     // debug/testing handle
     ;(window as unknown as Record<string, unknown>).__lambdaDangle = {
       sceneMgr: this.sceneMgr,
