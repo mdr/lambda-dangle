@@ -388,11 +388,16 @@ class App {
       this.labelsOn = labels.checked
       this.sceneMgr.currentView?.setLabelsVisible(this.labelsOn)
     })
+    // bindings can be flipped from the desktop checkbox or the VR panel;
+    // both routes go through here so the two controls stay in sync
     const tethers = $<HTMLInputElement>('tethers-toggle')
-    tethers.addEventListener('change', () => {
-      this.tethersOn = tethers.checked
-      this.sceneMgr.currentView?.setTethersVisible(this.tethersOn)
-    })
+    const applyTethers = (on: boolean): void => {
+      this.tethersOn = on
+      tethers.checked = on
+      this.sceneMgr.currentView?.setTethersVisible(on)
+      this.sceneMgr.setVRButtonLabel('tethers', `bindings: ${on ? 'on' : 'off'}`)
+    }
+    tethers.addEventListener('change', () => applyTethers(tethers.checked))
     const autocam = $<HTMLInputElement>('autocam-toggle')
     autocam.addEventListener('change', () => {
       this.sceneMgr.autoFrame = autocam.checked
@@ -428,6 +433,8 @@ class App {
       else if (action === 'strategy') {
         this.strategySelect.value = this.strategy === 'normal' ? 'applicative' : 'normal'
         this.sceneMgr.setVRButtonLabel('strategy', `strategy: ${this.strategySelect.value}`)
+      } else if (action === 'tethers') {
+        applyTethers(!this.tethersOn)
       } else if (action.startsWith('preset:')) {
         const i = parseInt(action.slice('preset:'.length), 10)
         const preset = PRESETS[i]

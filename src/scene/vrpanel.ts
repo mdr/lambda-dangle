@@ -42,6 +42,7 @@ export class VRPanel {
         { id: 'scale:+', label: '⊕ bigger', w: 0.136 },
       ],
       [{ id: 'strategy', label: 'strategy: normal', w: 0.279 }],
+      [{ id: 'tethers', label: 'bindings: off', w: 0.279 }],
       ...pairs(PRESETS.map((p, i) => ({ id: `preset:${i}`, label: p.name, w: 0.136 }))),
     ]
 

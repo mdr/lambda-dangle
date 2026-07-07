@@ -55,8 +55,8 @@ The term floats at tabletop scale in front of you.
 |                        | panel button                                  |
 | right A / B            | step / back                                   |
 | left X                 | show/hide the control panel (presets,         |
-|                        | strategy, size, reset, transport) on your     |
-|                        | left hand                                     |
+|                        | strategy, bindings, size, reset, transport)   |
+|                        | on your left hand                             |
 | left Y                 | run to normal form                            |
 | left stick             | move around the space                         |
 | right stick ←→         | snap turn (30° per flick)                     |
