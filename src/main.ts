@@ -398,6 +398,17 @@ class App {
       this.sceneMgr.setVRButtonLabel('tethers', `bindings: ${on ? 'on' : 'off'}`)
     }
     tethers.addEventListener('change', () => applyTethers(tethers.checked))
+    // in VR the tethers arc through depth and read beautifully, so they
+    // default ON there; leaving the headset restores the desktop choice
+    let tethersBeforeVR = this.tethersOn
+    this.sceneMgr.onXRSession = (presenting) => {
+      if (presenting) {
+        tethersBeforeVR = this.tethersOn
+        applyTethers(true)
+      } else {
+        applyTethers(tethersBeforeVR)
+      }
+    }
     const autocam = $<HTMLInputElement>('autocam-toggle')
     autocam.addEventListener('change', () => {
       this.sceneMgr.autoFrame = autocam.checked

@@ -23,6 +23,7 @@ export class SceneManager {
   onRedexClick: ((path: Path) => void) | null = null
   onHoverNode: ((key: string | null) => void) | null = null
   onXRAction: ((action: string) => void) | null = null
+  onXRSession: ((presenting: boolean) => void) | null = null
   /** Set while a reduction is animating/running — pauses idle sparkles. */
   sparklesSuppressed = false
 
@@ -369,6 +370,7 @@ export class SceneManager {
     this.dolly.quaternion.identity()
     if (this.vrPanel.group.visible) this.vrPanel.toggle()
     this.grid.visible = true
+    this.onXRSession?.(true)
   }
 
   private exitXR(): void {
@@ -379,6 +381,7 @@ export class SceneManager {
     this.dolly.position.set(0, 0, 0)
     this.dolly.quaternion.identity()
     this.grid.visible = false
+    this.onXRSession?.(false)
   }
 
   setVRButtonLabel(id: string, label: string): void {
