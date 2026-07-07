@@ -24,7 +24,7 @@ class App {
   private history: Term[] = []
   private pos = 0
   private labelsOn = false
-  private tethersOn = true
+  private tethersOn = false
   private running = false
   private pending: Promise<void> = Promise.resolve()
   private animating = false

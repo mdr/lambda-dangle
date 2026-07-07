@@ -228,6 +228,9 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
               mat.opacity = 0.55
               const line = new THREE.Line(makeTetherGeometry(), mat)
               line.frustumCulled = false
+              // respect the bindings toggle: clones inherit the source
+              // tether's visibility
+              line.visible = nv.tether.visible
               if (argKeySet.has(nv.info.binderKey)) {
                 writeTetherCurve(
                   line.geometry,
