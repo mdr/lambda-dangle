@@ -394,7 +394,7 @@ class App {
     const applyTethers = (on: boolean): void => {
       this.tethersOn = on
       tethers.checked = on
-      this.sceneMgr.currentView?.setTethersVisible(on)
+      this.sceneMgr.setTethersVisible(on)
       this.sceneMgr.setVRButtonLabel('tethers', `bindings: ${on ? 'on' : 'off'}`)
     }
     tethers.addEventListener('change', () => applyTethers(tethers.checked))

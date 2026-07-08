@@ -240,6 +240,9 @@ export class TermView {
           depthWrite: false,
         })
         tether = new THREE.Line(makeTetherGeometry(), tetherMaterial)
+        // marks every binding line (incl. choreography clones) so a live
+        // toggle can find them all by traversal, whatever owns them
+        tether.userData.tether = true
         this.group.add(tether)
       }
 

@@ -388,6 +388,16 @@ export class SceneManager {
     this.vrPanel.setLabel(id, label)
   }
 
+  /** Show/hide every binding line currently in the scene — the live view's
+   *  tethers AND any choreography clones mid-flight. Toggling only the
+   *  currentView misses both during an animation (the old view is already
+   *  disposed while proxies and the settling new view are on screen). */
+  setTethersVisible(on: boolean): void {
+    this.contentGroup.traverse((o) => {
+      if (o.userData.tether === true) o.visible = on
+    })
+  }
+
   private setRayFrom(controller: THREE.Object3D): void {
     tmpMat.identity().extractRotation(controller.matrixWorld)
     this.raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld)

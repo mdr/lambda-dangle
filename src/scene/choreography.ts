@@ -229,8 +229,9 @@ export async function animateBeta(ctx: ChoreoCtx): Promise<TermView> {
               const line = new THREE.Line(makeTetherGeometry(), mat)
               line.frustumCulled = false
               // respect the bindings toggle: clones inherit the source
-              // tether's visibility
+              // tether's visibility and stay reachable for live toggling
               line.visible = nv.tether.visible
+              line.userData.tether = true
               if (argKeySet.has(nv.info.binderKey)) {
                 writeTetherCurve(
                   line.geometry,
